@@ -580,7 +580,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
             
             keyboard = []
-            for i in range(1, min(max_db + 1, 11)):  # Maximum 10 db egyszerre
+            # Csak annyi darabszám opció, amennyi készleten van
+            for i in range(1, max_db + 1):
                 keyboard.append([InlineKeyboardButton(f"{i} db", callback_data=f"rendeles_db_{i}")])
             keyboard.append([InlineKeyboardButton("❌ Mégsem", callback_data="rendeles")])
             
@@ -615,20 +616,20 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             session["order_state"]["items"].append(new_item)
             session["order_state"]["current_iz"] = None  # Töröljük az átmeneti állapotot
             
-            # "Rendelsz még?" kérdés
+            # Teljes rendelési összesítő megjelenítése
             display_name = "VapSolo Triple 60K" if termek == "VapSolo" else "Elf Bar MoonNight 40K"
             
-            msg = f"✅ **Kosárhoz adva!**\n\n"
-            msg += f"🛍️ **{display_name}**\n"
-            msg += f"🎯 **Íz:** {iz}\n" 
-            msg += f"📦 **Mennyiség:** {db} db\n\n"
-            msg += f"🛒 **Kosárban:** {len(session['order_state']['items'])} tétel\n\n"
-            msg += f"Szeretnél még mást is rendelni?"
+            # Aktuális rendelés összesítése
+            summary_text, total_qty = build_order_summary(session["order_state"]["items"])
+            
+            msg = f"✅ **Kosárhoz adva: {iz} - {db} db**\n\n"
+            msg += summary_text + "\n\n"
+            msg += f"Mit szeretnél csinálni?"
             
             keyboard = [
                 [InlineKeyboardButton("➕ Rendelek még", callback_data="rendeles_meg")],
-                [InlineKeyboardButton("🧾 Összesítő", callback_data="rendeles_ossz")],
-                [InlineKeyboardButton("❌ Mégsem", callback_data="rendeles_megsem")]
+                [InlineKeyboardButton("✅ Véglegesítés", callback_data="rendeles_confirm")],
+                [InlineKeyboardButton("❌ Kosár ürítése", callback_data="rendeles_megsem")]
             ]
             await safe_edit_message(query, msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
