@@ -62,7 +62,8 @@ def get_user_session(user_id):
             "pending_data": {},
             "chat_id": None,
             "last_activity": time.time(),
-            "last_menu_message_id": None
+            "last_menu_message_id": None,
+            "reserved_stock": {}  # Ideiglenes készlet lefoglalás kosárhoz
         }
     else:
         user_sessions[user_id]["last_activity"] = time.time()
@@ -79,6 +80,22 @@ def get_seller_total_sales(seller_id):
     if seller_id not in sales_counters:
         return 0
     return sales_counters[seller_id].get("total_sold", 0)
+
+def release_reserved_stock(user_id):
+    """Lefoglalt készlet felszabadítása"""
+    session = get_user_session(user_id)
+    if "reserved_stock" not in session:
+        return
+    
+    for (termek, iz), qty in session["reserved_stock"].items():
+        if termek in keszlet:
+            if iz in keszlet[termek]:
+                keszlet[termek][iz] += qty
+            else:
+                keszlet[termek][iz] = qty
+    
+    session["reserved_stock"] = {}
+    print(f"Lefoglalt készlet felszabadítva user {user_id} számára")
 
 def build_order_summary(items):
     """Rendelési összesítő készítése"""
@@ -449,12 +466,25 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await show_main_menu(query, actual_user_id)
 
         elif data == "termekek":
+            # Chat takarítás a menü megjelenítése előtt
+            chat_id = query.message.chat.id
+            
             keyboard = [
                 [InlineKeyboardButton("🔸 VapSolo Triple 60K", callback_data="termek_VapSolo")],
                 [InlineKeyboardButton("🔸 Elf Bar MoonNight 40K", callback_data="termek_Elf Bar")],
                 [InlineKeyboardButton("⬅️ Vissza", callback_data="back_to_main")]
             ]
-            await safe_edit_message(query, "Válassz terméket a részletes leírásért:", reply_markup=InlineKeyboardMarkup(keyboard))
+            
+            # Új üzenet küldése
+            sent_message = await context.bot.send_message(
+                chat_id=chat_id,
+                text="Válassz terméket a részletes leírásért:",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            session["last_menu_message_id"] = sent_message.message_id
+            
+            # Korábbi üzenetek törlése a háttérben
+            asyncio.create_task(clear_chat_history(context, chat_id, actual_user_id, keep_message_id=sent_message.message_id))
 
         elif data.startswith("termek_"):
             termek = data.split("_", 1)[1]
@@ -529,11 +559,25 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             asyncio.create_task(clear_chat_history(context, chat_id, actual_user_id, keep_message_id=sent_message.message_id))
 
         elif data == "akcio":
+            # Chat takarítás a menü megjelenítése előtt
+            chat_id = query.message.chat.id
+            
             keyboard = []
             if actual_user_id == ADMIN_ID:
                 keyboard.append([InlineKeyboardButton("✏️ Módosítás", callback_data="akcio_modositas")])
             keyboard.append([InlineKeyboardButton("⬅️ Vissza", callback_data="back_to_main")])
-            await query.edit_message_text(f"🎯 **Akciók:**\n\n{akciok}", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+            
+            # Új üzenet küldése
+            sent_message = await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"🎯 **Akciók:**\n\n{akciok}",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            session["last_menu_message_id"] = sent_message.message_id
+            
+            # Korábbi üzenetek törlése a háttérben
+            asyncio.create_task(clear_chat_history(context, chat_id, actual_user_id, keep_message_id=sent_message.message_id))
 
         elif data == "akcio_modositas" and actual_user_id == ADMIN_ID:
             session["state"] = {"mode": "akcio_edit"}
@@ -663,6 +707,23 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if "items" not in session["order_state"]:
                 session["order_state"]["items"] = []
             
+            # Készlet lefoglalása időlegesen a kosárban
+            if "reserved_stock" not in session:
+                session["reserved_stock"] = {}
+            
+            key = (termek, iz)
+            if key in session["reserved_stock"]:
+                session["reserved_stock"][key] += db
+            else:
+                session["reserved_stock"][key] = db
+                
+            # Készletből ideiglenes kivonás
+            keszlet[termek][iz] -= db
+            if keszlet[termek][iz] <= 0:
+                del keszlet[termek][iz]
+            
+            print(f"Lefoglalva: {termek} {iz} {db} db user {actual_user_id} számára")
+            
             # Hozzáadás a kosárhoz
             new_item = {"termek": termek, "iz": iz, "db": db}
             session["order_state"]["items"].append(new_item)
@@ -742,6 +803,9 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if actual_user_id not in ARUSITO_IDK and actual_user_id != ADMIN_ID:
                 await query.answer("❌ Nincs jogosultságod ehhez!", show_alert=True)
                 return
+            
+            # Lefoglalt készlet felszabadítása
+            release_reserved_stock(actual_user_id)
             
             # Kosár ürítése
             session["order_state"] = {"items": [], "current_termek": None}
@@ -841,6 +905,9 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [InlineKeyboardButton("🏠 Főmenü", callback_data="back_to_main")]
             ]
             await safe_edit_message(query, success_msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+            
+            # Lefoglalt készlet törlése (mert már le van vonva a végleges készletből)
+            session["reserved_stock"] = {}
             
             # Session törlése
             session["order_state"] = {}
