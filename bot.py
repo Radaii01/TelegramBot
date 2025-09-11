@@ -524,13 +524,15 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
             
             # Eladási számláló megjelenítése
-            current_sales = get_seller_sales_count(actual_user_id)
-            remaining = max(0, 10 - current_sales)
+            current_remainder = get_seller_sales_count(actual_user_id)
+            total_sales = get_seller_total_sales(actual_user_id)
+            remaining = 10 - current_remainder if current_remainder > 0 else 10
             
             msg = f"🛒 **Rendelési rendszer**\n\n"
-            msg += f"📊 Jelenlegi eladásaid: **{current_sales} db**\n"
+            msg += f"📊 **Összes eladás:** {total_sales} db\n"
+            msg += f"📊 **Jelenlegi ciklus:** {current_remainder}/10 db\n"
             
-            if current_sales >= 10:
+            if current_remainder == 0 and total_sales > 0:
                 msg += f"🎉 **Gratulálunk! Elérted a 10 db-os limitet!**\n"
                 msg += f"✅ Jogosult vagy 1 db ingyen termékre!\n\n"
             else:
@@ -651,15 +653,17 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
             
             # Vissza a termék választáshoz (kosár megtartása)
-            current_sales = get_seller_sales_count(actual_user_id)
-            remaining = max(0, 10 - current_sales)
+            current_remainder = get_seller_sales_count(actual_user_id)
+            total_sales = get_seller_total_sales(actual_user_id)
+            remaining = 10 - current_remainder if current_remainder > 0 else 10
             
             items_count = len(session.get("order_state", {}).get("items", []))
             
             msg = f"🛒 **Rendelési rendszer** (Kosárban: {items_count} tétel)\n\n"
-            msg += f"📊 Jelenlegi eladásaid: **{current_sales} db**\n"
+            msg += f"📊 **Összes eladás:** {total_sales} db\n"
+            msg += f"📊 **Jelenlegi ciklus:** {current_remainder}/10 db\n"
             
-            if current_sales >= 10:
+            if current_remainder == 0 and total_sales > 0:
                 msg += f"🎉 **Gratulálunk! Elérted a 10 db-os limitet!**\n"
                 msg += f"✅ Jogosult vagy 1 db ingyen termékre!\n\n"
             else:
