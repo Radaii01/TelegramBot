@@ -146,26 +146,35 @@ def increment_seller_sales(seller_id, quantity=1):
     
     return new_remainder, delta_awards, new_total  # (jelenlegi számláló, új awards, összes eladás)
 
-async def notify_admin_and_seller(context, seller_id, current_count):
+async def notify_admin_and_seller(context, seller_id, current_count, delta_awards=0, total_sold=0):
     """Admin és árusító értesítése eladásokról"""
     seller_name = f"Árusító (ID: {seller_id})"
     
     # Admin értesítése
-    admin_msg = f"📊 **Eladási jelentés**\n\n{seller_name} jelenlegi eladásai: **{current_count} db**"
+    admin_msg = f"📊 **Eladási jelentés**\n\n{seller_name} jelenlegi ciklus: **{current_count}/10 db**"
+    admin_msg += f"\n📊 **Összes eladás:** {total_sold} db"
     
-    if current_count >= 10:
-        admin_msg += f"\n\n🎉 **{seller_name} elérte a 10 db-os limitet!**\n✅ Jogosult 1 db ingyen termékre!"
+    if delta_awards > 0:
+        if delta_awards == 1:
+            admin_msg += f"\n\n🎉 **{seller_name} elérte a 10 db-os limitet!**\n✅ Jogosult 1 db ingyen termékre!"
+        else:
+            admin_msg += f"\n\n🎉 **{seller_name} {delta_awards} alkalommal érte el a 10 db-os limitet!**\n✅ Jogosult {delta_awards} db ingyen termékre!"
     
     await send_private_message(context, ADMIN_ID, admin_msg)
     
     # Árusító értesítése
-    seller_msg = f"📈 **Eladás rögzítve!**\n\nJelenlegi eladásaid: **{current_count} db**"
+    seller_msg = f"📈 **Eladás rögzítve!**\n\n📊 **Összes eladás:** {total_sold} db"
+    seller_msg += f"\n📊 **Jelenlegi ciklus:** {current_count}/10 db"
     
-    if current_count >= 10:
-        seller_msg += f"\n\n🎉 **Gratulálunk!**\nElérted a 10 db-os limitet!\n✅ Jogosult vagy 1 db ingyen termékre!"
-        seller_msg += f"\nVedd fel a kapcsolatot az adminnal!"
+    if delta_awards > 0:
+        if delta_awards == 1:
+            seller_msg += f"\n\n🎉 **Gratulálunk!**\nElérted a 10 db-os limitet!\n✅ Jogosult vagy 1 db ingyen termékre!"
+            seller_msg += f"\nVedd fel a kapcsolatot az adminnal!"
+        else:
+            seller_msg += f"\n\n🎉 **SZUPER GRATULÁLUNK!**\n{delta_awards} alkalommal érted el a 10 db-os limitet!\n✅ Jogosult vagy {delta_awards} db ingyen termékre!"
+            seller_msg += f"\nVedd fel a kapcsolatot az adminnal!"
     else:
-        remaining = 10 - current_count
+        remaining = 10 - current_count if current_count > 0 else 10
         seller_msg += f"\nMég {remaining} db az ingyen termékig! 💪"
     
     await send_private_message(context, seller_id, seller_msg)
