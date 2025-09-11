@@ -838,10 +838,12 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     grouped[key] = 0
                 grouped[key] += item["db"]
             
-            # Készlet ellenőrzése minden tételre
+            # Készlet ellenőrzése minden tételre (reserved stock figyelembevételével)
             shortages = []
+            reserved = session.get("reserved_stock", {})
             for (termek, iz), needed_qty in grouped.items():
-                available = keszlet[termek].get(iz, 0)
+                # A jelenlegi készlet + ez a felhasználó lefoglalt készlete 
+                available = keszlet[termek].get(iz, 0) + reserved.get((termek, iz), 0)
                 if available < needed_qty:
                     shortages.append(f"• {iz}: {needed_qty} db kell, {available} db van")
             
@@ -852,12 +854,9 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await safe_edit_message(query, error_msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
                 return
             
-            # Készlet csökkentés
+            # Összesített mennyiség számítása (a készlet már le van csökkentve a kosárba rakáskor)
             total_qty = 0
             for (termek, iz), qty in grouped.items():
-                keszlet[termek][iz] -= qty
-                if keszlet[termek][iz] == 0:
-                    del keszlet[termek][iz]
                 total_qty += qty
             
             # Eladási számláló növelése
