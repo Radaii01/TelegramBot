@@ -32,22 +32,24 @@ sales_counters = {}
 # Termék leírások
 termek_leirasok = {
     "VapSolo": (
-        "60.000 slukk\n"
-        "3 íz egyben\n"
-        "5% nikotin\n"
-        "kisebb kijelző a folyadék és akkumulátor állapotáról\n"
-        "650 mAh akkumulátor\n"
-        "USB Type-C töltő"
+        "💨 60.000 slukk\n"
+        "🎯 3 íz egyben\n"
+        "💪 5% nikotin\n"
+        "📱 kisebb kijelző a folyadék és akkumulátor állapotáról\n"
+        "🔋 650 mAh akkumulátor\n"
+        "⚡ USB Type-C töltő\n\n"
+        "💰 **Ár: 10.000 Ft**"
     ),
     "Elf Bar": (
-        "3 fokozat\n"
-        "Eco mode: 40.000 slukk\n"
-        "Normal mode: 30.000 slukk\n"
-        "Boost mode: 25.000 slukk\n"
-        "5% nikotin\n"
-        "nagyobb kijelző a folyadék és akkumulátor állapotáról valamint az aktuális fokozatról\n"
-        "1000 mAh akkumulátor\n"
-        "USB Type-C töltő"
+        "⚙️ 3 fokozat\n"
+        "🌱 Eco mode: 40.000 slukk\n"
+        "🔥 Normal mode: 30.000 slukk\n"
+        "🚀 Boost mode: 25.000 slukk\n"
+        "💪 5% nikotin\n"
+        "📱 nagyobb kijelző a folyadék és akkumulátor állapotáról valamint az aktuális fokozatról\n"
+        "🔋 1000 mAh akkumulátor\n"
+        "⚡ USB Type-C töltő\n\n"
+        "💰 **Ár: 10.000 Ft**"
     )
 }
 
@@ -124,13 +126,13 @@ def increment_seller_sales(seller_id, quantity=1):
     old_count = sales_counters[seller_id]
     new_total = old_count + quantity
     
-    # Rollover logika: 10-es ciklus megtartása, maradék mentése
+    # Ingyen termékek száma (hány 10-es küszöböt lépett át összesen)
+    awards = new_total // 10
+    
+    # Új számláló érték (0-9 között, 10-nél nullázódik)
     sales_counters[seller_id] = new_total % 10
     
-    # Award számítás (hány 10-es küszöböt lépett át)
-    awards = new_total // 10 - old_count // 10
-    
-    return sales_counters[seller_id], awards  # (maradék, award számok)
+    return sales_counters[seller_id], awards  # (maradék, összes award szám)
 
 async def notify_admin_and_seller(context, seller_id, current_count):
     """Admin és árusító értesítése eladásokról"""
@@ -414,8 +416,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         elif data == "termekek":
             keyboard = [
-                [InlineKeyboardButton("VapSolo Triple 60K", callback_data="termek_VapSolo")],
-                [InlineKeyboardButton("Elf Bar MoonNight 40K", callback_data="termek_Elf Bar")],
+                [InlineKeyboardButton("🔸 VapSolo Triple 60K", callback_data="termek_VapSolo")],
+                [InlineKeyboardButton("🔸 Elf Bar MoonNight 40K", callback_data="termek_Elf Bar")],
                 [InlineKeyboardButton("⬅️ Vissza", callback_data="back_to_main")]
             ]
             await safe_edit_message(query, "Válassz terméket a részletes leírásért:", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -601,6 +603,12 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if keszlet[termek].get(iz, 0) < db:
                 await query.answer("❌ Nincs elegendő készlet!", show_alert=True)
                 return
+            
+            # Order state inicializálása ha szükséges
+            if "order_state" not in session:
+                session["order_state"] = {"items": [], "current_termek": None}
+            if "items" not in session["order_state"]:
+                session["order_state"]["items"] = []
             
             # Hozzáadás a kosárhoz
             new_item = {"termek": termek, "iz": iz, "db": db}
@@ -839,34 +847,103 @@ async def handle_text_message(update, context):
                 
                 display_name = "VapSolo Triple 60K" if termek == "VapSolo" else "Elf Bar MoonNight 40K"
                 
-                keyboard = [[InlineKeyboardButton("✅ Rendben", callback_data="termekek")]]
-                await update.message.reply_text(
-                    f"✅ **{display_name}** leírás frissítve!\n\n{message_text}",
-                    reply_markup=InlineKeyboardMarkup(keyboard),
-                    parse_mode='Markdown'
-                )
+                # Felhasználó üzenetének törlése
+                try:
+                    await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.message_id)
+                except Exception:
+                    pass
+                
+                # Menü frissítése a session-ben tárolt üzenettel
+                if "last_menu_message_id" in session and session["last_menu_message_id"]:
+                    try:
+                        await context.bot.edit_message_text(
+                            chat_id=update.effective_chat.id,
+                            message_id=session["last_menu_message_id"],
+                            text=f"✅ **{display_name}** leírás frissítve!\n\nVálassz a menüből:",
+                            reply_markup=InlineKeyboardMarkup([
+                                [InlineKeyboardButton("📋 Termékek", callback_data="termekek")],
+                                [InlineKeyboardButton("🏠 Főmenü", callback_data="back_to_main")]
+                            ])
+                        )
+                    except Exception:
+                        # Ha nem sikerül a szerkesztés, új üzenet küldése
+                        new_message = await context.bot.send_message(
+                            chat_id=update.effective_chat.id,
+                            text=f"✅ **{display_name}** leírás frissítve!\n\nVálassz a menüből:",
+                            reply_markup=InlineKeyboardMarkup([
+                                [InlineKeyboardButton("📋 Termékek", callback_data="termekek")],
+                                [InlineKeyboardButton("🏠 Főmenü", callback_data="back_to_main")]
+                            ])
+                        )
+                        session["last_menu_message_id"] = new_message.message_id
                 session["state"] = {}
         
         # Akció szerkesztése
         elif state.get("mode") == "akcio_edit" and user_id == ADMIN_ID:
             akciok = message_text
-            keyboard = [[InlineKeyboardButton("✅ Rendben", callback_data="akcio")]]
-            await update.message.reply_text(
-                f"✅ **Akció frissítve!**\n\n{message_text}",
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
-            )
+            
+            # Felhasználó üzenetének törlése
+            try:
+                await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.message_id)
+            except Exception:
+                pass
+            
+            # Menü frissítése
+            if "last_menu_message_id" in session and session["last_menu_message_id"]:
+                try:
+                    await context.bot.edit_message_text(
+                        chat_id=update.effective_chat.id,
+                        message_id=session["last_menu_message_id"],
+                        text="✅ **Akció frissítve!**\n\nVálassz a menüből:",
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("🎯 Akció", callback_data="akcio")],
+                            [InlineKeyboardButton("🏠 Főmenü", callback_data="back_to_main")]
+                        ])
+                    )
+                except Exception:
+                    new_message = await context.bot.send_message(
+                        chat_id=update.effective_chat.id,
+                        text="✅ **Akció frissítve!**\n\nVálassz a menüből:",
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("🎯 Akció", callback_data="akcio")],
+                            [InlineKeyboardButton("🏠 Főmenü", callback_data="back_to_main")]
+                        ])
+                    )
+                    session["last_menu_message_id"] = new_message.message_id
             session["state"] = {}
         
         # VIP szerkesztése
         elif state.get("mode") == "vip_edit" and user_id == ADMIN_ID:
             vip = message_text
-            keyboard = [[InlineKeyboardButton("✅ Rendben", callback_data="vip")]]
-            await update.message.reply_text(
-                f"✅ **V.I.P. ajánlat frissítve!**\n\n{message_text}",
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
-            )
+            
+            # Felhasználó üzenetének törlése
+            try:
+                await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.message_id)
+            except Exception:
+                pass
+            
+            # Menü frissítése
+            if "last_menu_message_id" in session and session["last_menu_message_id"]:
+                try:
+                    await context.bot.edit_message_text(
+                        chat_id=update.effective_chat.id,
+                        message_id=session["last_menu_message_id"],
+                        text="✅ **V.I.P. ajánlat frissítve!**\n\nVálassz a menüből:",
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("⭐ V.I.P.", callback_data="vip")],
+                            [InlineKeyboardButton("🏠 Főmenü", callback_data="back_to_main")]
+                        ])
+                    )
+                except Exception:
+                    new_message = await context.bot.send_message(
+                        chat_id=update.effective_chat.id,
+                        text="✅ **V.I.P. ajánlat frissítve!**\n\nVálassz a menüből:",
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("⭐ V.I.P.", callback_data="vip")],
+                            [InlineKeyboardButton("🏠 Főmenü", callback_data="back_to_main")]
+                        ])
+                    )
+                    session["last_menu_message_id"] = new_message.message_id
             session["state"] = {}
         
         # Készlet feltöltés - íz neve
