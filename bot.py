@@ -227,7 +227,10 @@ def cleanup_inactive_sessions():
 
     for user_id in list(user_sessions.keys()):
         if current_time - user_sessions[user_id].get("last_activity", 0) > timeout:
+            # Lefoglalt készlet felszabadítása mielőtt töröljük a sessiont
+            release_reserved_stock(user_id)
             del user_sessions[user_id]
+            print(f"Inaktív session törölve: {user_id}")
 
 async def send_private_message(context, admin_id, message):
     try:
