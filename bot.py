@@ -262,19 +262,45 @@ async def start_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         print(f"Error in start_channel: {e}")
 
-async def clear_chat_history(context, chat_id, user_id):
-    """Chat előzmények törlése (utolsó 50 üzenet)"""
+async def clear_chat_history(context, chat_id, user_id, keep_message_id=None):
+    """Chat előzmények törlése - agresszívebb megközelítés"""
     try:
-        # Próbáljuk meg törölni az utolsó 50 üzenetet a chatből
-        for i in range(50):
-            try:
-                # Telegram nem ad lehetőséget üzenet ID-k lekérésére,
-                # ezért a legutóbbi üzenet ID-kat próbáljuk
-                await context.bot.delete_message(chat_id=chat_id, message_id=999999 - i)
-            except Exception:
-                # Ha nem sikerül törölni, továbblépünk
-                continue
-    except Exception:
+        session = get_user_session(user_id)
+        deleted_count = 0
+        
+        # 1. Töröljük a sessionban tárolt message ID-kat
+        for key in list(session.keys()):
+            if "message_id" in key and session[key] and session[key] != keep_message_id:
+                try:
+                    await context.bot.delete_message(chat_id=chat_id, message_id=session[key])
+                    deleted_count += 1
+                    del session[key]
+                except Exception:
+                    pass
+        
+        # 2. Próbáljuk meg törölni a legutóbbi üzeneteket
+        # Egy üzenet küldése hogy megkapjuk az aktuális message_id-t
+        try:
+            temp_msg = await context.bot.send_message(chat_id=chat_id, text="🧹")
+            current_id = temp_msg.message_id
+            await context.bot.delete_message(chat_id=chat_id, message_id=current_id)
+            
+            # Visszafelé töröljük az üzeneteket az aktuális ID-tól
+            for i in range(1, 20):  # Utolsó 20 üzenet
+                try:
+                    msg_id = current_id - i
+                    if msg_id != keep_message_id:
+                        await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
+                        deleted_count += 1
+                except Exception:
+                    continue
+        except Exception:
+            pass
+            
+        print(f"Chat takarítás: {deleted_count} üzenet törölve")
+        
+    except Exception as e:
+        print(f"Hiba a chat takarításban: {e}")
         pass
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -336,10 +362,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         session["last_menu_message_id"] = sent_message.message_id
 
-        # AZUTÁN: Chat takarítás a háttérben
+        # AZUTÁN: Teljes chat takarítás a háttérben
         async def cleanup_chat():
-            await asyncio.sleep(0.5)  # Kis késleltetés
-
+            await asyncio.sleep(0.5)  # Kis késleltetés a menü megjelenítése után
+            
             # /start parancs törlése
             message_obj = update.message
             if message_obj:
@@ -347,22 +373,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await context.bot.delete_message(chat_id=chat_id, message_id=message_obj.message_id)
                 except Exception:
                     pass
-
-            # Korábbi bot üzenetek törlése ha vannak
-            if old_session:
-                if "last_menu_message_id" in old_session and old_session["last_menu_message_id"]:
-                    try:
-                        await context.bot.delete_message(chat_id=chat_id, message_id=old_session["last_menu_message_id"])
-                    except Exception:
-                        pass
-
-                # Töröljük az összes tárolt üzenet ID-t
-                for key in list(old_session.keys()):
-                    if "message_id" in key and old_session[key]:
-                        try:
-                            await context.bot.delete_message(chat_id=chat_id, message_id=old_session[key])
-                        except Exception:
-                            pass
+            
+            # Teljes chat takarítás (kivéve az új menü üzenetet)
+            await clear_chat_history(context, chat_id, user_id, keep_message_id=sent_message.message_id)
 
         # Takarítás indítása a háttérben
         asyncio.create_task(cleanup_chat())
@@ -475,6 +488,11 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(f"Jelenlegi {display_name} leírás:\n\n{current_leiras}\n\nÍrd be az új leírást:", reply_markup=InlineKeyboardMarkup(keyboard))
 
         elif data == "aktualis":
+            # Chat takarítás a menü megjelenítése előtt
+            chat_id = query.message.chat.id
+            session = get_user_session(actual_user_id)
+            
+            # Új menü üzenet küldése
             msg = "📦 **Aktuális készlet:**\n\n"
             for termek, lista in keszlet.items():
                 # Teljes termék név megjelenítése
@@ -497,7 +515,18 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     msg += "\n"
 
             keyboard = [[InlineKeyboardButton("⬅️ Vissza", callback_data="back_to_main")]]
-            await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+            
+            # Új üzenet küldése
+            sent_message = await context.bot.send_message(
+                chat_id=chat_id,
+                text=msg,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            session["last_menu_message_id"] = sent_message.message_id
+            
+            # Korábbi üzenetek törlése a háttérben
+            asyncio.create_task(clear_chat_history(context, chat_id, actual_user_id, keep_message_id=sent_message.message_id))
 
         elif data == "akcio":
             keyboard = []
