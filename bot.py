@@ -558,7 +558,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
-        elif data.startswith("rendeles_") and not data.startswith("rendeles_iz_") and not data.startswith("rendeles_db_"):
+        elif data.startswith("rendeles_") and not data.startswith("rendeles_iz_") and not data.startswith("rendeles_db_") and data not in ["rendeles_meg", "rendeles_confirm", "rendeles_ossz", "rendeles_megsem"]:
             if actual_user_id not in ARUSITO_IDK and actual_user_id != ADMIN_ID:
                 await query.answer("❌ Nincs jogosultságod ehhez!", show_alert=True)
                 return
