@@ -26,7 +26,7 @@ keszlet = {"VapSolo": {}, "Elf Bar": {}}
 akciok = "Jelenleg nincsenek akciók."
 vip = "Jelenleg nincsenek V.I.P. ajánlatok."
 user_sessions = {}
-# Eladási számláló minden árusító számára
+# Eladási számláló minden árusító számára: {seller_id: {"total_sold": total, "remainder": current_count}}
 sales_counters = {}
 
 # Termék leírások
@@ -69,8 +69,16 @@ def get_user_session(user_id):
     return user_sessions[user_id]
 
 def get_seller_sales_count(seller_id):
-    """Árusító eladási számának lekérése"""
-    return sales_counters.get(seller_id, 0)
+    """Árusító eladási számának lekérése (jelenlegi számláló érték 0-9)"""
+    if seller_id not in sales_counters:
+        return 0
+    return sales_counters[seller_id].get("remainder", 0)
+
+def get_seller_total_sales(seller_id):
+    """Árusító összes eladásának lekérése"""
+    if seller_id not in sales_counters:
+        return 0
+    return sales_counters[seller_id].get("total_sold", 0)
 
 def build_order_summary(items):
     """Rendelési összesítő készítése"""
@@ -121,18 +129,22 @@ def build_order_summary(items):
 def increment_seller_sales(seller_id, quantity=1):
     """Árusító eladási számának növelése (darabszám szerint)"""
     if seller_id not in sales_counters:
-        sales_counters[seller_id] = 0
+        sales_counters[seller_id] = {"total_sold": 0, "remainder": 0}
     
-    old_count = sales_counters[seller_id]
-    new_total = old_count + quantity
+    old_total = sales_counters[seller_id]["total_sold"]
+    old_remainder = sales_counters[seller_id]["remainder"]
     
-    # Ingyen termékek száma (hány 10-es küszöböt lépett át összesen)
-    awards = new_total // 10
+    new_total = old_total + quantity
+    new_remainder = new_total % 10
     
-    # Új számláló érték (0-9 között, 10-nél nullázódik)
-    sales_counters[seller_id] = new_total % 10
+    # Delta awards: hány 10-es küszöböt lépett át EBBEN a rendelésben
+    delta_awards = (old_total + quantity) // 10 - old_total // 10
     
-    return sales_counters[seller_id], awards  # (maradék, összes award szám)
+    # Frissítés
+    sales_counters[seller_id]["total_sold"] = new_total
+    sales_counters[seller_id]["remainder"] = new_remainder
+    
+    return new_remainder, delta_awards, new_total  # (jelenlegi számláló, új awards, összes eladás)
 
 async def notify_admin_and_seller(context, seller_id, current_count):
     """Admin és árusító értesítése eladásokról"""
