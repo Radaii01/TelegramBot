@@ -1121,21 +1121,6 @@ async def handle_text_message(update, context):
         session["state"] = {}
 
 # Main function
-from flask import Flask
-import threading
-import os
-
-# --- Flask keep-alive webserver ---
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "Bot is running on Render!"
-
-def run_flask():
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
-
-
 if __name__ == '__main__':
     application = ApplicationBuilder().token(BOT_TOKEN).build()
     
@@ -1144,9 +1129,4 @@ if __name__ == '__main__':
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
     
     print("Bot elindult...")
-
-    # Flask indítása külön szálon
-    threading.Thread(target=run_flask).start()
-
-    # Telegram bot polling indítása
     application.run_polling()
